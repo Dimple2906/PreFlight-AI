@@ -1,0 +1,21 @@
+{
+  "name": "preflight-monorepo",
+  "private": true,
+  "version": "0.1.0",
+  "description": "PreFlight AI - Production readiness gatekeeper for software projects",
+  "scripts": {
+    "build": "pnpm --recursive run build",
+    "typecheck": "tsc --build --clean && tsc --build tsconfig.json",
+    "test": "vitest run",
+    "lint": "tsc --noEmit",
+    "format": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.5",
+    "typescript": "^5.7.3",
+    "vitest": "^3.0.6"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

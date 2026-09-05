@@ -1,0 +1,30 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build outputs
+dist/
+build/
+*.tsbuildinfo
+
+# Tarballs & Local Packages
+*.tgz
+*.tar.gz
+
+# Environment & Secrets
+.env
+.env.local
+.env.production
+.env*.local
+
+# IDE & System
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.log
+
+# Coverage & Cache
+coverage/
+.cache/
+.vitest/

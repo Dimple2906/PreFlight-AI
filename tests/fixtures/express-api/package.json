@@ -1,0 +1,13 @@
+{
+  "name": "express-fixture",
+  "version": "1.0.0",
+  "dependencies": {
+    "express": "^4.19.0",
+    "pg": "^8.11.0",
+    "stripe": "^15.8.0",
+    "jsonwebtoken": "^9.0.2"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0"
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "name": "@preflight/security",
+  "version": "0.1.0",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "type": "module",
+  "scripts": {
+    "build": "tsc --build",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@preflight/core": "workspace:*",
+    "dotenv": "^16.4.7",
+    "execa": "^9.5.2"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.3",
+    "vitest": "^3.0.6"
+  }
+}

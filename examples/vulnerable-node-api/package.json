@@ -1,0 +1,17 @@
+{
+  "name": "vulnerable-node-api",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node -e \"process.exit(1)\"",
+    "typecheck": "node -e \"console.log('Typecheck passed')\"",
+    "build": "node -e \"console.log('Build passed')\""
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21"
+  }
+}

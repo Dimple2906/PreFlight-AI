@@ -1,0 +1,31 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "lib": ["ES2022"],
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "composite": true,
+    "incremental": true
+  },
+  "references": [
+    { "path": "./packages/core" },
+    { "path": "./packages/security" },
+    { "path": "./packages/config" },
+    { "path": "./packages/discovery" },
+    { "path": "./packages/classifier" },
+    { "path": "./packages/qa-engine" },
+    { "path": "./packages/deploy-engine" },
+    { "path": "./packages/ai-engine" },
+    { "path": "./packages/reporter" },
+    { "path": "./apps/cli" },
+    { "path": "./apps/server" }
+  ],
+  "exclude": ["node_modules", "dist"]
+}

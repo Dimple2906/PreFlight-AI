@@ -1,0 +1,62 @@
+{
+  "name": "preflight-ai",
+  "version": "1.0.0",
+  "description": "PreFlight AI - CLI Production Readiness Gatekeeper for Software Projects",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "preflight": "./bin/preflight.js"
+  },
+  "files": [
+    "bin",
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit",
+    "start": "node ./bin/preflight.js"
+  },
+  "license": "MIT",
+  "author": "PreFlight AI Team",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/preflight-ai/preflight.git"
+  },
+  "keywords": [
+    "preflight",
+    "preflight-ai",
+    "cli",
+    "production-readiness",
+    "testing",
+    "deployment",
+    "qa",
+    "gatekeeper",
+    "security"
+  ],
+  "dependencies": {
+    "chalk": "^5.4.1",
+    "commander": "^13.1.0",
+    "dotenv": "^16.4.7",
+    "execa": "^9.5.2",
+    "fast-glob": "^3.3.3",
+    "ora": "^8.2.0",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@preflight/ai-engine": "workspace:*",
+    "@preflight/classifier": "workspace:*",
+    "@preflight/config": "workspace:*",
+    "@preflight/core": "workspace:*",
+    "@preflight/deploy-engine": "workspace:*",
+    "@preflight/discovery": "workspace:*",
+    "@preflight/qa-engine": "workspace:*",
+    "@preflight/reporter": "workspace:*",
+    "@preflight/security": "workspace:*",
+    "@types/node": "^22.13.5",
+    "tsup": "^8.5.1",
+    "typescript": "^5.7.3"
+  }
+}

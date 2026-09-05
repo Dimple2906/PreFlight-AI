@@ -1,0 +1,17 @@
+{
+  "name": "fixture-demo",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node -e \"console.log('Deterministic Unit Tests Passed')\"",
+    "typecheck": "node -e \"console.log('Deterministic Typecheck Passed')\"",
+    "build": "node -e \"console.log('Production Build Successful')\""
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21"
+  }
+}

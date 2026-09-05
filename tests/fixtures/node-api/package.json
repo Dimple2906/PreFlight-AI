@@ -1,0 +1,8 @@
+{
+  "name": "node-api-fixture",
+  "version": "1.0.0",
+  "dependencies": {
+    "fastify": "^4.26.0",
+    "ioredis": "^5.4.0"
+  }
+}
