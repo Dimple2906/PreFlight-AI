@@ -1,28 +1,29 @@
 import { describe, it, expect } from 'vitest';
-import { GeminiProvider } from '../providers/GeminiProvider.js';
-import { MockProvider } from '../providers/MockProvider.js';
+import { GeminiProvider } from '../providers/gemini/GeminiProvider.js';
+import { MockAIProvider } from '../providers/mock/MockAIProvider.js';
 import { PayloadSanitizer } from '../sanitization/payload-sanitizer.js';
+import { AIEngine } from '../AIEngine.js';
 import { createAIProvider } from '../factory.js';
 import { ProjectProfile, ExecutionResult } from '@preflight/core';
 
-describe('AI Reasoning Layer & Provider Testing', () => {
+describe('AI Reasoning Layer & Provider Architecture', () => {
   const sampleProfile: ProjectProfile = {
     name: 'shop-x',
     rootPath: '/app',
     languages: ['typescript'],
-    frameworks: ['nextjs'],
+    frameworks: ['express'],
     runtime: 'node',
     databases: ['postgresql'],
     architecture: 'monolith',
-    projectType: 'fullstack',
-    hosting: ['vercel'],
+    projectType: 'api-server',
+    hosting: ['docker'],
     packageManager: 'pnpm',
-    hasDockerfile: false,
+    hasDockerfile: true,
     hasCIConfig: true,
-    entrypoints: [],
+    entrypoints: ['src/index.ts'],
     testFrameworks: ['vitest'],
     envFiles: ['.env'],
-    dependencies: { next: '^14.0.0', stripe: '^15.0.0' },
+    dependencies: { express: '^4.19.0', pg: '^8.11.0' },
     devDependencies: {},
     domainSignals: ['payments', 'auth'],
     evidenceList: []
@@ -31,7 +32,7 @@ describe('AI Reasoning Layer & Provider Testing', () => {
   const sampleResults: ExecutionResult[] = [
     {
       id: 'res-1',
-      targetId: 'AUTH-001',
+      targetId: 'qa-auth-missing',
       name: 'Missing Credentials Probe',
       type: 'test',
       status: 'FAIL',
@@ -61,22 +62,31 @@ describe('AI Reasoning Layer & Provider Testing', () => {
     expect(stdoutSnippet).toContain('[REDACTED');
   });
 
-  it('should fall back to MockProvider cleanly when GEMINI_API_KEY is missing', async () => {
+  it('should fall back to MockAIProvider cleanly when GEMINI_API_KEY is missing', async () => {
     const provider = new GeminiProvider(''); // empty API key
-    const analysis = await provider.analyzeQAGaps(sampleProfile, sampleResults);
+    expect(provider.isAvailable()).toBe(false);
 
-    expect(analysis.summary).toContain('Offline Mock QA Analysis');
-    expect(analysis.rootCauseAnalyses.length).toBeGreaterThan(0);
+    const context = new AIEngine().buildProjectContext(sampleProfile);
+    const analysis = await provider.analyzeProject(context);
+
+    expect(analysis.summary).toContain('api-server');
+    expect(analysis.riskSignals.length).toBeGreaterThan(0);
   });
 
-  it('should execute MockProvider offline analysis deterministically', async () => {
-    const mock = new MockProvider();
-    const projectAnalysis = await mock.analyzeProject(sampleProfile);
-    expect(projectAnalysis.summary).toContain('Offline Analysis');
+  it('should generate structured test plan via MockAIProvider deterministically', async () => {
+    const mock = new MockAIProvider();
+    const context = new AIEngine().buildProjectContext(sampleProfile);
+    const plan = await mock.generateTestPlan({
+      projectContext: context,
+      availableCapabilities: [
+        { id: 'qa-auth-missing', name: 'Missing Credentials Probe', category: 'authentication', description: 'desc' },
+        { id: 'qa-conc-requests', name: 'Concurrent Request Burst', category: 'concurrency', description: 'desc' }
+      ]
+    });
 
-    const qaAnalysis = await mock.analyzeQAGaps(sampleProfile, sampleResults);
-    expect(qaAnalysis.coverageGaps.length).toBeGreaterThan(0);
-    expect(qaAnalysis.coverageGaps[0].suggestedCapabilityId).toBe('CONC-001');
+    expect(plan.recommendedTests.length).toBeGreaterThan(0);
+    expect(plan.recommendedTests[0].id).toBe('qa-auth-missing');
+    expect(plan.recommendedTests[0].risk).toBe('high');
   });
 
   it('should instantiate provider via createAIProvider factory', () => {
@@ -85,5 +95,19 @@ describe('AI Reasoning Layer & Provider Testing', () => {
 
     const p2 = createAIProvider('gemini', 'test-key');
     expect(p2.name).toBe('gemini');
+  });
+
+  it('should orchestrate via AIEngine coordinator', async () => {
+    const engine = new AIEngine({ provider: 'mock' });
+    const status = engine.getStatus();
+    expect(status.provider).toBe('mock');
+    expect(status.available).toBe(true);
+
+    const risk = await engine.analyzeProjectRisk(sampleProfile);
+    expect(risk.riskSignals.length).toBeGreaterThan(0);
+
+    const evidenceAnalysis = await engine.analyzeEvidence(sampleProfile, sampleResults);
+    expect(evidenceAnalysis.rootCauseAnalyses.length).toBe(1);
+    expect(evidenceAnalysis.rootCauseAnalyses[0].confidence).toBe('HIGH');
   });
 });

@@ -1,21 +1,33 @@
-import { describe, it, expect } from 'vitest';
-import path from 'path';
+import { describe, it, expect, afterEach } from 'vitest';
 import { PreflightTestService } from '../services/test.service.js';
 import { PreflightDeployService } from '../services/deploy.service.js';
 import { ReportEngine } from '@preflight/reporter';
+import {
+  createTempBrokenDeploymentProject,
+  createTempNodeProject,
+  TempProject
+} from '../../../../tests/utils/temp-projects.js';
 
-describe('PreFlight End-to-End System Integration', () => {
-  const fixturePath = path.resolve(__dirname, '../../../../examples/fixture-demo');
+describe('PreFlight End-to-End System Integration (Dynamic Temporary Projects)', () => {
+  let tempProj: TempProject | null = null;
 
-  it('runs complete PreFlight QA Flow with result merging & provenance', async () => {
+  afterEach(() => {
+    if (tempProj) {
+      tempProj.cleanup();
+      tempProj = null;
+    }
+  });
+
+  it('runs complete PreFlight QA Flow with result merging & provenance on dynamic project', async () => {
+    tempProj = createTempNodeProject();
     const testService = new PreflightTestService();
     const report = await testService.run({
-      projectPath: fixturePath,
+      projectPath: tempProj.rootPath,
       enableAi: true
     });
 
     expect(report.mode).toBe('test');
-    expect(report.projectProfile.name).toBe('fixture-demo');
+    expect(report.projectProfile.name).toBe('temp-node-api');
     expect(report.results.length).toBeGreaterThanOrEqual(2);
 
     // Verify result merging and provenance tagging
@@ -40,16 +52,17 @@ describe('PreFlight End-to-End System Integration', () => {
   }, 30000);
 
   it('runs complete PreFlight Deployment Flow with GO / NO-GO verdict & defect detection', async () => {
+    tempProj = createTempBrokenDeploymentProject();
     const deployService = new PreflightDeployService();
     const report = await deployService.run({
-      projectPath: fixturePath,
+      projectPath: tempProj.rootPath,
       enableAi: true
     });
 
     expect(report.mode).toBe('deploy');
-    expect(report.projectProfile.name).toBe('fixture-demo');
+    expect(report.projectProfile.name).toBe('temp-broken-deployment');
 
-    // Fixture has committed .env file and hardcoded secrets -> overall status MUST be FAIL
+    // Broken deployment has committed .env file and hardcoded secrets -> overall status MUST be FAIL
     expect(report.overallStatus).toBe('FAIL');
 
     const reporter = new ReportEngine();
@@ -62,7 +75,7 @@ describe('PreFlight End-to-End System Integration', () => {
     // Verify secret values in evidence are redacted
     for (const res of report.results) {
       if (res.evidence?.stdout) {
-        expect(res.evidence.stdout).not.toContain('SuperSecretPass123!');
+        expect(res.evidence.stdout).not.toContain('productionSuperSecret99!');
         expect(res.evidence.stdout).not.toContain('wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY');
       }
     }

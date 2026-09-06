@@ -1,16 +1,28 @@
-import { describe, it, expect } from 'vitest';
-import * as path from 'node:path';
+import { describe, it, expect, afterEach } from 'vitest';
 import { DeployEngine } from '../engine/deploy-engine.js';
 import { ProjectProfile } from '@preflight/core';
+import {
+  createTempCommittedEnvProject,
+  createTempExposedSecretProject,
+  TempProject
+} from '@preflight/core';
 
-describe('DeployEngine Readiness Checks against Deployment Flaw Fixtures', () => {
+describe('DeployEngine Readiness Checks (Dynamic Temporary Projects)', () => {
   const engine = new DeployEngine();
+  let tempProj: TempProject | null = null;
+
+  afterEach(() => {
+    if (tempProj) {
+      tempProj.cleanup();
+      tempProj = null;
+    }
+  });
 
   it('should detect committed .env file defect (DEPLOY-ENV-004)', async () => {
-    const committedEnvRoot = path.resolve(process.cwd(), 'tests/fixtures/deployment-flaws/committed-env');
+    tempProj = createTempCommittedEnvProject();
     const profile: ProjectProfile = {
       name: 'committed-env',
-      rootPath: committedEnvRoot,
+      rootPath: tempProj.rootPath,
       languages: ['javascript'],
       frameworks: ['unknown'],
       runtime: 'node',
@@ -39,10 +51,10 @@ describe('DeployEngine Readiness Checks against Deployment Flaw Fixtures', () =>
   });
 
   it('should detect hardcoded secret credentials (DEPLOY-SECRETS-001) with [REDACTED] value output', async () => {
-    const exposedSecretRoot = path.resolve(process.cwd(), 'tests/fixtures/deployment-flaws/exposed-secret');
+    tempProj = createTempExposedSecretProject();
     const profile: ProjectProfile = {
       name: 'exposed-secret',
-      rootPath: exposedSecretRoot,
+      rootPath: tempProj.rootPath,
       languages: ['typescript'],
       frameworks: ['unknown'],
       runtime: 'node',
@@ -68,7 +80,7 @@ describe('DeployEngine Readiness Checks against Deployment Flaw Fixtures', () =>
     expect(sec001).toBeDefined();
     expect(sec001?.status).toBe('FAIL');
     expect(sec001?.evidence.stdout).toContain('Value: [REDACTED]');
-    expect(sec001?.evidence.stdout).not.toContain('sk-1234567890abcdef1234567890abcdef');
+    expect(sec001?.evidence.stdout).not.toContain('wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY');
     expect(sec001?.evidence.stdout).not.toContain('AKIAIOSFODNN7EXAMPLE');
   });
 });

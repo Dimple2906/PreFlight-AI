@@ -1,9 +1,16 @@
-import { describe, it, expect } from 'vitest';
-import * as path from 'node:path';
+import { describe, it, expect, afterEach } from 'vitest';
 import { TestAppService, DeployAppService, DoctorAppService } from '../services/index.js';
+import { createTempVulnerableProject, TempProject } from '../../../../tests/utils/temp-projects.js';
 
-describe('CLI Application Services', () => {
-  const examplePath = path.resolve(process.cwd(), 'examples/vulnerable-shop');
+describe('CLI Application Services (Dynamic Temporary Projects)', () => {
+  let tempProj: TempProject | null = null;
+
+  afterEach(() => {
+    if (tempProj) {
+      tempProj.cleanup();
+      tempProj = null;
+    }
+  });
 
   it('should execute DoctorAppService diagnostics', async () => {
     const service = new DoctorAppService();
@@ -13,10 +20,11 @@ describe('CLI Application Services', () => {
     expect(results[0].passed).toBe(true);
   }, 15000);
 
-  it('should run TestAppService on example target project', async () => {
+  it('should run TestAppService on dynamic target project', async () => {
+    tempProj = createTempVulnerableProject();
     const service = new TestAppService();
     const report = await service.run({
-      projectPath: examplePath,
+      projectPath: tempProj.rootPath,
       enableAi: false
     });
 
@@ -25,10 +33,11 @@ describe('CLI Application Services', () => {
     expect(report.overallStatus).toBeDefined();
   }, 15000);
 
-  it('should run DeployAppService on example target project', async () => {
+  it('should run DeployAppService on dynamic target project', async () => {
+    tempProj = createTempVulnerableProject();
     const service = new DeployAppService();
     const report = await service.run({
-      projectPath: examplePath,
+      projectPath: tempProj.rootPath,
       enableAi: false
     });
 

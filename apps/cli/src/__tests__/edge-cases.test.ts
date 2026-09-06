@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
 import path from 'path';
 import fs from 'fs';
 import os from 'os';
@@ -7,56 +7,78 @@ import { PreflightDeployService } from '../services/deploy.service.js';
 import { ReportEngine } from '@preflight/reporter';
 import { ProjectInspector } from '@preflight/discovery';
 import { ProjectClassifier } from '@preflight/classifier';
+import {
+  createTempNodeProject,
+  createTempVulnerableProject,
+  createTempNextProject,
+  createTempBrokenDeploymentProject,
+  TempProject
+} from '../../../../tests/utils/temp-projects.js';
 
-describe('PreFlight QA Pass - E2E Fixtures & Edge Cases', () => {
-  const examplesDir = path.resolve(__dirname, '../../../../examples');
+describe('PreFlight QA Pass - Dynamic Projects & Edge Cases', () => {
+  let tempProjs: TempProject[] = [];
 
-  describe('E2E Fixture Verification', () => {
-    it('verifies healthy-node-api passes both test and deploy', async () => {
-      const target = path.join(examplesDir, 'healthy-node-api');
+  afterEach(() => {
+    for (const p of tempProjs) {
+      p.cleanup();
+    }
+    tempProjs = [];
+  });
+
+  describe('Dynamic Project Verification', () => {
+    it('verifies healthy dynamic node-api passes both test and deploy', async () => {
+      const proj = createTempNodeProject();
+      tempProjs.push(proj);
+
       const testService = new PreflightTestService();
       const deployService = new PreflightDeployService();
 
-      const testReport = await testService.run({ projectPath: target, enableAi: false });
+      const testReport = await testService.run({ projectPath: proj.rootPath, enableAi: false });
       expect(testReport.overallStatus).toBe('PASS');
 
-      const deployReport = await deployService.run({ projectPath: target, enableAi: false });
+      const deployReport = await deployService.run({ projectPath: proj.rootPath, enableAi: false });
       expect(deployReport.overallStatus).toBe('PASS');
 
       const reporter = new ReportEngine();
       expect(reporter.getVerdictCode('deploy', deployReport.overallStatus)).toBe('🟢 GO');
     }, 30000);
 
-    it('verifies vulnerable-node-api fails test and deploy', async () => {
-      const target = path.join(examplesDir, 'vulnerable-node-api');
+    it('verifies vulnerable dynamic api fails test and deploy', async () => {
+      const proj = createTempVulnerableProject();
+      tempProjs.push(proj);
+
       const testService = new PreflightTestService();
       const deployService = new PreflightDeployService();
 
-      const testReport = await testService.run({ projectPath: target, enableAi: false });
+      const testReport = await testService.run({ projectPath: proj.rootPath, enableAi: false });
       expect(testReport.overallStatus).toBe('FAIL');
 
-      const deployReport = await deployService.run({ projectPath: target, enableAi: false });
+      const deployReport = await deployService.run({ projectPath: proj.rootPath, enableAi: false });
       expect(deployReport.overallStatus).toBe('FAIL');
 
       const reporter = new ReportEngine();
       expect(reporter.getVerdictCode('deploy', deployReport.overallStatus)).toBe('🔴 NO-GO');
     }, 30000);
 
-    it('verifies nextjs-shop classification', async () => {
-      const target = path.join(examplesDir, 'nextjs-shop');
+    it('verifies dynamic nextjs-app classification', async () => {
+      const proj = createTempNextProject();
+      tempProjs.push(proj);
+
       const inspector = new ProjectInspector();
       const classifier = new ProjectClassifier();
 
-      const discovered = await inspector.inspect(target);
+      const discovered = await inspector.inspect(proj.rootPath);
       const profile = classifier.classify(discovered);
 
       expect(profile.frameworks).toContain('nextjs');
     }, 30000);
 
-    it('verifies broken-deployment detects build failure & committed .env', async () => {
-      const target = path.join(examplesDir, 'broken-deployment');
+    it('verifies dynamic broken-deployment detects build failure & committed .env', async () => {
+      const proj = createTempBrokenDeploymentProject();
+      tempProjs.push(proj);
+
       const deployService = new PreflightDeployService();
-      const deployReport = await deployService.run({ projectPath: target, enableAi: false });
+      const deployReport = await deployService.run({ projectPath: proj.rootPath, enableAi: false });
 
       expect(deployReport.overallStatus).toBe('FAIL');
       const reporter = new ReportEngine();
@@ -111,9 +133,11 @@ describe('PreFlight QA Pass - E2E Fixtures & Edge Cases', () => {
     });
 
     it('runs when AI is disabled (--no-ai)', async () => {
-      const target = path.join(examplesDir, 'healthy-node-api');
+      const proj = createTempNodeProject();
+      tempProjs.push(proj);
+
       const testService = new PreflightTestService();
-      const report = await testService.run({ projectPath: target, enableAi: false });
+      const report = await testService.run({ projectPath: proj.rootPath, enableAi: false });
 
       expect(report.aiAnalysis).toBeUndefined();
       expect(report.overallStatus).toBe('PASS');

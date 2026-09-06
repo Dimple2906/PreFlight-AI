@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { Server } from 'node:http';
 import { QAEngine } from '../engine/qa-engine.js';
+import { QARegistry } from '../registry/qa-registry.js';
 import { createVulnerableTestApp } from './vulnerable-app.js';
 import { ProjectProfile } from '@preflight/core';
 
@@ -46,7 +47,7 @@ describe('Adversarial QA Engine Probing against Vulnerable App', () => {
       envFiles: [],
       dependencies: {},
       devDependencies: {},
-      domainSignals: [],
+      domainSignals: ['auth'],
       evidenceList: []
     };
 
@@ -68,5 +69,53 @@ describe('Adversarial QA Engine Probing against Vulnerable App', () => {
     const sec001 = results.find(r => r.targetId === 'SEC-001');
     expect(sec001).toBeDefined();
     expect(sec001?.status).toBe('FAIL');
+  });
+
+  it('should resolve aliases and validate capabilities in QARegistry', () => {
+    const registry = new QARegistry();
+
+    // Alias resolution
+    const authzTest = registry.findTest('authorization-boundary');
+    expect(authzTest).toBeDefined();
+    expect(authzTest?.id).toBe('AUTH-004');
+
+    const rateTest = registry.findTest('rate-limit');
+    expect(rateTest).toBeDefined();
+    expect(rateTest?.id).toBe('RATE-001');
+
+    const concTest = registry.findTest('concurrency');
+    expect(concTest).toBeDefined();
+    expect(concTest?.id).toBe('CONC-001');
+
+    // Unknown capability validation
+    const sampleProfile: ProjectProfile = {
+      name: 'test',
+      rootPath: process.cwd(),
+      languages: ['typescript'],
+      frameworks: ['express'],
+      runtime: 'node',
+      databases: [],
+      architecture: 'monolith',
+      projectType: 'api-server',
+      hosting: [],
+      packageManager: 'npm',
+      hasDockerfile: false,
+      hasCIConfig: false,
+      entrypoints: [],
+      testFrameworks: [],
+      envFiles: [],
+      dependencies: {},
+      devDependencies: {},
+      domainSignals: [],
+      evidenceList: []
+    };
+
+    const invalid = registry.validateRecommendation('arbitrary-shell-command', sampleProfile);
+    expect(invalid.valid).toBe(false);
+    expect(invalid.reason).toContain('No compatible deterministic executor');
+
+    const valid = registry.validateRecommendation('qa-conc-requests', sampleProfile);
+    expect(valid.valid).toBe(true);
+    expect(valid.test?.id).toBe('CONC-001');
   });
 });

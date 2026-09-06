@@ -3,6 +3,7 @@ import ora from 'ora';
 import chalk from 'chalk';
 import path from 'node:path';
 import { DeployAppService } from '../services/deploy.service.js';
+import { loadCliEnvironment } from '../utils/env.js';
 import { GlobalCliOptions } from '../utils/options.js';
 import { ExitCode, resolveExitCode } from '../utils/exit-codes.js';
 import { renderBanner, renderProjectSummary } from '../ui/header.js';
@@ -15,6 +16,7 @@ export function registerDeployCommand(program: Command): void {
     .action(async (projectArg?: string) => {
       const opts = program.opts<GlobalCliOptions>();
       const targetPath = projectArg ? path.resolve(projectArg) : process.cwd();
+      loadCliEnvironment(targetPath);
       const spinner = !opts.quiet && !opts.json ? ora('Inspecting deployment readiness...').start() : null;
 
       try {

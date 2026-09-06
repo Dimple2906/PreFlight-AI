@@ -45,35 +45,60 @@ preflight --version
 
 ## 4. Quick Start
 
-Run PreFlight AI inside any software project root directory:
+Run PreFlight AI against any project directory (or pass an external path):
 
 ```bash
-# Perform adversarial QA testing & coverage gap analysis
-preflight test
+# Verify system prerequisites and AI connectivity
+preflight doctor
 
-# Perform deployment readiness checks & release gatekeeping
-preflight deploy
+# Inspect project architecture and vulnerability vectors
+preflight scan ./my-project
+
+# Perform Gemini-powered adaptive testing and gap analysis
+preflight test ./my-project
+
+# Run deterministic testing with AI layer disabled
+preflight test ./my-project --no-ai
+
+# Output machine-readable versioned JSON report
+preflight test ./my-project --json
+
+# Perform deployment readiness gatekeeping
+preflight deploy ./my-project
+```
+
+External project paths are fully supported:
+
+```bash
+preflight test "C:\Projects\my-api"
 ```
 
 ---
 
 ## 5. `preflight test`
 
-The `preflight test` command executes deterministic adversarial QA testing against your project:
+The `preflight test` command executes deterministic adversarial QA testing and Gemini adaptive test planning:
 
 ```bash
-preflight test [options]
+preflight test [path] [options]
 ```
 
-### Flow
-1. **Project Discovery & Inspection**: Detects project structure, languages, frameworks, entrypoints, and domain signals.
-2. **Deterministic Execution**: Runs test runners and adversarial security probes (auth guards, SQL injection boundaries, rate limiting, concurrency).
-3. **AI Gap Analysis**: Analyzes execution evidence to identify coverage gaps and root causes.
-4. **Deterministic Re-Execution**: Evaluates AI-suggested capabilities from the QA registry and re-executes matching tests.
-5. **Final Verdict**: Outputs terminal status, JSON schema, or Markdown report with verdict:
-   - `🟢 PREFLIGHT PASSED`
-   - `🟡 PREFLIGHT PASSED WITH WARNINGS`
-   - `🔴 PREFLIGHT FAILED`
+### Architectural Principle
+```text
+Gemini proposes.
+Validator approves.
+Executor executes.
+Evidence decides.
+Gemini explains.
+```
+
+### Workflow
+1. **Project Discovery & Classification**: Detects filesystem manifests, languages, frameworks, runtime, databases, and domain signals.
+2. **AI Risk Analysis & Test Planning**: Gemini analyzes architectural risks and proposes structured test scenarios.
+3. **Capability Validation**: PreFlight validates each AI recommendation against its registered test capabilities. Unsupported or unsafe commands are rejected.
+4. **Deterministic Execution**: Safely executes applicable test runners and adversarial probes (auth guards, SQL injection boundaries, rate limiting, concurrency, type safety). Real evidence is captured.
+5. **Adaptive Gap Analysis & Re-Execution**: Gemini analyzes deterministic evidence to identify coverage gaps and recommend additional registry tests (up to 2 adaptive rounds).
+6. **Final Verdict**: Evidence dictates verdict (`🟢 PASS`, `🟡 WARN`, `🔴 FAIL`). Gemini never fabricates results.
 
 ---
 

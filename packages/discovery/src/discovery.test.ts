@@ -1,20 +1,36 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
+import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { ProjectInspector } from './inspector.js';
+import { createTempNextProject, createTempDockerProject, TempProject } from '@preflight/core';
 
-describe('ProjectInspector', () => {
+describe('ProjectInspector (Dynamic Temporary Projects)', () => {
   const inspector = new ProjectInspector();
-  const fixturesRoot = path.resolve(process.cwd(), 'tests/fixtures');
+  let tempProj: TempProject | null = null;
 
-  it('should inspect Next.js fixture files cleanly', async () => {
-    const discovered = await inspector.inspect(path.join(fixturesRoot, 'nextjs-app'));
+  afterEach(() => {
+    if (tempProj) {
+      tempProj.cleanup();
+      tempProj = null;
+    }
+  });
+
+  it('should inspect dynamic Next.js project files cleanly', async () => {
+    tempProj = createTempNextProject();
+    // Add prisma and vercel config dynamically
+    fs.mkdirSync(path.join(tempProj.rootPath, 'prisma'), { recursive: true });
+    fs.writeFileSync(path.join(tempProj.rootPath, 'prisma/schema.prisma'), 'datasource db { provider = "postgresql" }');
+    fs.writeFileSync(path.join(tempProj.rootPath, 'vercel.json'), '{"buildCommand": "next build"}');
+
+    const discovered = await inspector.inspect(tempProj.rootPath);
     expect(discovered.manifests).toContain('package.json');
     expect(discovered.dbConfigFiles).toContain('prisma/schema.prisma');
     expect(discovered.configFiles).toContain('vercel.json');
   });
 
-  it('should inspect Docker fixture files cleanly', async () => {
-    const discovered = await inspector.inspect(path.join(fixturesRoot, 'docker-app'));
+  it('should inspect dynamic Docker project files cleanly', async () => {
+    tempProj = createTempDockerProject();
+    const discovered = await inspector.inspect(tempProj.rootPath);
     expect(discovered.hasDockerfile).toBe(true);
     expect(discovered.dockerFiles).toContain('Dockerfile');
   });

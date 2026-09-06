@@ -1,6 +1,7 @@
 import { Command } from 'commander';
 import chalk from 'chalk';
 import { DoctorAppService } from '../services/doctor.service.js';
+import { loadCliEnvironment } from '../utils/env.js';
 import { GlobalCliOptions } from '../utils/options.js';
 import { ExitCode } from '../utils/exit-codes.js';
 
@@ -9,6 +10,7 @@ export function registerDoctorCommand(program: Command): void {
     .command('doctor')
     .description('Diagnose PreFlight CLI environment and AI provider connectivity')
     .action(async () => {
+      loadCliEnvironment();
       const opts = program.opts<GlobalCliOptions>();
       const doctorService = new DoctorAppService();
       const results = await doctorService.run();

@@ -8,7 +8,9 @@
     "typecheck": "tsc --build --clean && tsc --build tsconfig.json",
     "test": "vitest run",
     "lint": "tsc --noEmit",
-    "format": "tsc --noEmit"
+    "format": "tsc --noEmit",
+    "temp:vulnerable": "node scripts/temp-vulnerable.mjs",
+    "temp:clean": "node scripts/temp-vulnerable.mjs --clean"
   },
   "devDependencies": {
     "@types/node": "^22.13.5",
@@ -17,5 +19,22 @@
   },
   "engines": {
     "node": ">=18.0.0"
-  }
+  },
+  "main": "vitest.config.js",
+  "directories": {
+    "doc": "docs",
+    "test": "tests"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Dimple2906/PreFlight-AI.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "types": "./vitest.config.d.ts",
+  "bugs": {
+    "url": "https://github.com/Dimple2906/PreFlight-AI/issues"
+  },
+  "homepage": "https://github.com/Dimple2906/PreFlight-AI#readme"
 }

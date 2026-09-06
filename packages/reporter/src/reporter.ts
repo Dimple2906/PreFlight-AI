@@ -34,7 +34,7 @@ export class ReportEngine {
   }
 
   /**
-   * Render machine-readable JSON (v1.0 schema)
+   * Render machine-readable JSON (stable v1.0 schema specified in spec)
    */
   public renderJson(report: FinalReport): string {
     const verdictCode = this.getVerdictCode(report.mode, report.overallStatus);
@@ -51,13 +51,21 @@ export class ReportEngine {
       }))
     );
 
-    const tests = report.results.map((res) => {
-      const rca = report.aiAnalysis?.rootCauseAnalyses.find(
+    const evidenceList = report.results.map((res) => ({
+      testId: res.targetId || res.id,
+      name: res.name,
+      status: res.status,
+      durationMs: res.durationMs,
+      command: res.evidence.command ? globalSanitizer.sanitize(res.evidence.command).sanitizedText : undefined,
+      exitCode: res.evidence.exitCode,
+      stdout: globalSanitizer.sanitize(res.evidence.stdout || '').sanitizedText,
+      stderr: globalSanitizer.sanitize(res.evidence.stderr || '').sanitizedText
+    }));
+
+    const results = report.results.map((res) => {
+      const rca = report.aiAnalysis?.rootCauseAnalyses?.find(
         (r) => r.resultId === res.id || r.resultId === res.targetId
       );
-
-      const evidenceStdout = globalSanitizer.sanitize(res.evidence.stdout || '').sanitizedText;
-      const evidenceStderr = globalSanitizer.sanitize(res.evidence.stderr || '').sanitizedText;
 
       return {
         id: res.targetId || res.id,
@@ -67,10 +75,11 @@ export class ReportEngine {
         status: res.status,
         severity: res.severity,
         durationMs: res.durationMs,
+        provenance: res.provenance || 'initial',
         evidence: {
           command: res.evidence.command ? globalSanitizer.sanitize(res.evidence.command).sanitizedText : undefined,
-          stdout: evidenceStdout,
-          stderr: evidenceStderr,
+          stdout: globalSanitizer.sanitize(res.evidence.stdout || '').sanitizedText,
+          stderr: globalSanitizer.sanitize(res.evidence.stderr || '').sanitizedText,
           exitCode: res.evidence.exitCode
         },
         risk: res.findings && res.findings.length > 0
@@ -87,6 +96,9 @@ export class ReportEngine {
       };
     });
 
+    const aiAnalysis = report.aiAnalysis;
+    const isAiEnabled = Boolean(aiAnalysis);
+
     const jsonPayload = {
       version: '1.0',
       project: {
@@ -101,6 +113,29 @@ export class ReportEngine {
         packageManager: report.projectProfile.packageManager,
         domainSignals: report.projectProfile.domainSignals
       },
+      ai: {
+        enabled: isAiEnabled,
+        provider: aiAnalysis?.provider || 'mock',
+        status: aiAnalysis?.status || (isAiEnabled ? 'available' : 'disabled')
+      },
+      riskAnalysis: aiAnalysis?.riskAnalysis || {
+        summary: 'Deterministic testing only (no AI risk analysis)',
+        detectedArchitectureRisk: 'N/A',
+        riskSignals: [],
+        recommendedTestingStrategy: []
+      },
+      testPlan: aiAnalysis?.testPlan || [],
+      results,
+      tests: results,
+      aiRecommendations: (aiAnalysis?.coverageGaps || []).map((gap) => ({
+        id: gap.id,
+        area: gap.area,
+        description: globalSanitizer.sanitize(gap.description).sanitizedText,
+        severity: gap.severity,
+        recommendedAction: globalSanitizer.sanitize(gap.recommendedAction).sanitizedText
+      })),
+      evidence: evidenceList,
+      findings,
       summary: {
         total: report.stats.total,
         passed: report.stats.passed,
@@ -110,32 +145,6 @@ export class ReportEngine {
         errored: report.stats.errored,
         durationMs: report.stats.durationMs
       },
-      findings,
-      tests,
-      aiAnalysis: report.aiAnalysis
-        ? {
-            summary: globalSanitizer.sanitize(report.aiAnalysis.summary).sanitizedText,
-            rootCauseAnalyses: report.aiAnalysis.rootCauseAnalyses.map((rca) => ({
-              resultId: rca.resultId,
-              possibleRootCause: globalSanitizer.sanitize(rca.possibleRootCause).sanitizedText,
-              confidence: rca.confidence,
-              suggestedFix: globalSanitizer.sanitize(rca.suggestedFix).sanitizedText
-            })),
-            coverageGaps: report.aiAnalysis.coverageGaps.map((gap) => ({
-              id: gap.id,
-              area: gap.area,
-              description: globalSanitizer.sanitize(gap.description).sanitizedText,
-              severity: gap.severity,
-              recommendedAction: globalSanitizer.sanitize(gap.recommendedAction).sanitizedText
-            })),
-            additionalCheckRecommendations: report.aiAnalysis.additionalCheckRecommendations.map((rec) => ({
-              id: rec.id,
-              name: rec.name,
-              reason: globalSanitizer.sanitize(rec.reason).sanitizedText,
-              command: rec.command
-            }))
-          }
-        : null,
       verdict: {
         mode: report.mode,
         status: report.overallStatus,
@@ -163,14 +172,40 @@ export class ReportEngine {
     lines.push(`\n  VERDICT: ${chalk.bold(verdictCode)}`);
     lines.push(`  Target Project:  ${chalk.bold(report.projectProfile.name)}`);
     lines.push(`  Project Type:    ${report.projectProfile.projectType} (${report.projectProfile.languages.join(', ')})`);
-    lines.push(`  Frameworks:      ${report.projectProfile.frameworks.join(', ') || 'N/A'}`);
+    lines.push(`  Frameworks:      ${report.projectProfile.frameworks.join(', ') || 'None'}`);
     lines.push(`  Runtime:         ${report.projectProfile.runtime}`);
     lines.push(`  Duration:        ${report.stats.durationMs}ms`);
+
+    // AI Status & Risk Analysis Section
+    if (report.aiAnalysis) {
+      lines.push('\n' + chalk.bold.magenta('───────────────────────────────────────────────────────────'));
+      lines.push(chalk.bold.magenta(`  AI REASONING LAYER [Provider: ${(report.aiAnalysis.provider || 'gemini').toUpperCase()}]`));
+      lines.push(chalk.bold.magenta('───────────────────────────────────────────────────────────'));
+
+      if (report.aiAnalysis.riskAnalysis) {
+        lines.push(chalk.bold.white('  Risk Analysis:'));
+        lines.push(chalk.gray(`  Summary: ${globalSanitizer.sanitize(report.aiAnalysis.riskAnalysis.summary).sanitizedText}`));
+        if (report.aiAnalysis.riskAnalysis.riskSignals?.length > 0) {
+          lines.push(chalk.dim(`  Identified Signals: ${report.aiAnalysis.riskAnalysis.riskSignals.join(' | ')}`));
+        }
+      }
+
+      if (report.aiAnalysis.testPlan && report.aiAnalysis.testPlan.length > 0) {
+        lines.push(chalk.bold.white('\n  AI Proposed Test Scenarios:'));
+        for (const item of report.aiAnalysis.testPlan) {
+          const badge = item.status === 'APPROVED' ? chalk.green('✓ APPROVED') : chalk.gray('○ SKIPPED');
+          lines.push(`   ${badge} [${item.category}] ${item.title}`);
+          if (item.skipReason) {
+            lines.push(chalk.dim(`     Reason: ${item.skipReason}`));
+          }
+        }
+      }
+    }
 
     // Results Table
     const table = new Table({
       head: [chalk.cyan('Status'), chalk.cyan('Target Name'), chalk.cyan('Type'), chalk.cyan('Severity'), chalk.cyan('Duration')],
-      colWidths: [10, 32, 10, 12, 12]
+      colWidths: [10, 34, 10, 12, 12]
     });
 
     for (const res of report.results) {
@@ -197,7 +232,7 @@ export class ReportEngine {
       lines.push(chalk.bold.red('───────────────────────────────────────────────────────────'));
 
       for (const fail of failedResults) {
-        const rca = report.aiAnalysis?.rootCauseAnalyses.find(
+        const rca = report.aiAnalysis?.rootCauseAnalyses?.find(
           (r) => r.resultId === fail.id || r.resultId === fail.targetId
         );
 
@@ -229,26 +264,15 @@ export class ReportEngine {
       }
     }
 
-    // AI Analysis section (if present)
-    if (report.aiAnalysis) {
-      lines.push('\n' + chalk.bold.magenta('───────────────────────────────────────────────────────────'));
-      lines.push(chalk.bold.magenta('  AI ANALYSIS & COVERAGE GAPS'));
-      lines.push(chalk.bold.magenta('───────────────────────────────────────────────────────────'));
-      lines.push(chalk.gray(`  Summary: ${globalSanitizer.sanitize(report.aiAnalysis.summary).sanitizedText}`));
+    // AI Gap Analysis section
+    if (report.aiAnalysis && report.aiAnalysis.coverageGaps && report.aiAnalysis.coverageGaps.length > 0) {
+      lines.push('\n' + chalk.bold.yellow('───────────────────────────────────────────────────────────'));
+      lines.push(chalk.bold.yellow('  AI COVERAGE GAP ANALYSIS'));
+      lines.push(chalk.bold.yellow('───────────────────────────────────────────────────────────'));
 
-      if (report.aiAnalysis.coverageGaps.length > 0) {
-        lines.push(chalk.yellow('\n  Coverage Gaps Detected:'));
-        for (const gap of report.aiAnalysis.coverageGaps) {
-          lines.push(`   * [${gap.severity}] ${gap.area}: ${globalSanitizer.sanitize(gap.description).sanitizedText}`);
-          lines.push(chalk.dim(`     Action: ${globalSanitizer.sanitize(gap.recommendedAction).sanitizedText}`));
-        }
-      }
-
-      if (report.aiAnalysis.additionalCheckRecommendations.length > 0) {
-        lines.push(chalk.cyan('\n  Additional Recommended Checks:'));
-        for (const rec of report.aiAnalysis.additionalCheckRecommendations) {
-          lines.push(`   * ${rec.name} (${rec.command}): ${globalSanitizer.sanitize(rec.reason).sanitizedText}`);
-        }
+      for (const gap of report.aiAnalysis.coverageGaps) {
+        lines.push(`   * [${gap.severity}] ${gap.area}: ${globalSanitizer.sanitize(gap.description).sanitizedText}`);
+        lines.push(chalk.dim(`     Action: ${globalSanitizer.sanitize(gap.recommendedAction).sanitizedText}`));
       }
     }
 
@@ -289,10 +313,30 @@ export class ReportEngine {
     md.push(``);
 
     md.push(`## Classification`);
-    md.push(`- **Domain Signals**: ${report.projectProfile.domainSignals.join(', ') || 'Standard Web Application'}`);
+    md.push(`- **Domain Signals**: ${report.projectProfile.domainSignals?.join(', ') || 'Standard Web Application'}`);
     md.push(`- **Has Docker**: \`${report.projectProfile.hasDockerfile}\``);
     md.push(`- **Has CI/CD**: \`${report.projectProfile.hasCIConfig}\``);
     md.push(``);
+
+    if (report.aiAnalysis?.riskAnalysis) {
+      md.push(`## AI Risk Analysis`);
+      md.push(`> ${globalSanitizer.sanitize(report.aiAnalysis.riskAnalysis.summary).sanitizedText}`);
+      md.push(``);
+      if (report.aiAnalysis.riskAnalysis.riskSignals?.length > 0) {
+        md.push(`- **Risk Signals**: ${report.aiAnalysis.riskAnalysis.riskSignals.join(', ')}`);
+      }
+      md.push(``);
+    }
+
+    if (report.aiAnalysis?.testPlan && report.aiAnalysis.testPlan.length > 0) {
+      md.push(`## AI Test Plan`);
+      md.push(`| Status | Category | Title | Objective |`);
+      md.push(`| --- | --- | --- | --- |`);
+      for (const item of report.aiAnalysis.testPlan) {
+        md.push(`| \`${item.status}\` | ${item.category} | ${item.title} | ${item.objective} |`);
+      }
+      md.push(``);
+    }
 
     md.push(`## Tests Executed`);
     md.push(`| Status | Target Name | Type | Severity | Duration |`);
@@ -318,7 +362,7 @@ export class ReportEngine {
     if (failedResults.length > 0) {
       md.push(`## Failed Test Details`);
       for (const fail of failedResults) {
-        const rca = report.aiAnalysis?.rootCauseAnalyses.find(
+        const rca = report.aiAnalysis?.rootCauseAnalyses?.find(
           (r) => r.resultId === fail.id || r.resultId === fail.targetId
         );
 
@@ -354,32 +398,14 @@ export class ReportEngine {
       }
     }
 
-    if (report.aiAnalysis) {
+    if (report.aiAnalysis?.coverageGaps && report.aiAnalysis.coverageGaps.length > 0) {
       md.push(`## AI Analysis & Coverage Gaps`);
-      md.push(`${globalSanitizer.sanitize(report.aiAnalysis.summary).sanitizedText}`);
+      for (const gap of report.aiAnalysis.coverageGaps) {
+        md.push(`- **[${gap.severity}] ${gap.area}**: ${globalSanitizer.sanitize(gap.description).sanitizedText}`);
+        md.push(`  - *Recommended Action*: ${globalSanitizer.sanitize(gap.recommendedAction).sanitizedText}`);
+      }
       md.push(``);
-
-      if (report.aiAnalysis.coverageGaps.length > 0) {
-        md.push(`### Coverage Gaps`);
-        for (const gap of report.aiAnalysis.coverageGaps) {
-          md.push(`- **[${gap.severity}] ${gap.area}**: ${globalSanitizer.sanitize(gap.description).sanitizedText}`);
-          md.push(`  - *Recommended Action*: ${globalSanitizer.sanitize(gap.recommendedAction).sanitizedText}`);
-        }
-        md.push(``);
-      }
-
-      if (report.aiAnalysis.additionalCheckRecommendations.length > 0) {
-        md.push(`### Additional Recommended Checks`);
-        for (const rec of report.aiAnalysis.additionalCheckRecommendations) {
-          md.push(`- **${rec.name}** (\`${rec.command}\`): ${globalSanitizer.sanitize(rec.reason).sanitizedText}`);
-        }
-        md.push(``);
-      }
     }
-
-    md.push(`## Remediation`);
-    md.push(`Review failed tests and coverage gaps above. Implement required authorization, input validation, or environment variables before deployment.`);
-    md.push(``);
 
     md.push(`## Final Verdict`);
     md.push(`### ${verdictCode}`);

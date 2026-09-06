@@ -68,7 +68,10 @@ export class QAEngine {
       stderr = result.stderr;
       exitCode = result.exitCode ?? null;
 
-      if (exitCode !== 0) {
+      if (result.timedOut) {
+        status = 'ERROR';
+        explanation = `Deterministic test timed out after ${testDef.timeoutMs}ms.`;
+      } else if (exitCode !== 0) {
         status = 'FAIL';
         explanation = `Adversarial test failed with exit code (${exitCode}).`;
       }

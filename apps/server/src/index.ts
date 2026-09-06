@@ -3,7 +3,7 @@ import { ProjectInspector } from '@preflight/discovery';
 import { ProjectClassifier } from '@preflight/classifier';
 import { QAEngine } from '@preflight/qa-engine';
 import { DeployEngine } from '@preflight/deploy-engine';
-import { createAIProvider } from '@preflight/ai-engine';
+import { AIEngine } from '@preflight/ai-engine';
 import { SecretSanitizer } from '@preflight/security';
 import { FinalReport } from '@preflight/core';
 
@@ -41,25 +41,30 @@ export async function createServer() {
 
       let aiAnalysis;
       if (enableAi) {
-        const aiProvider = createAIProvider('mock');
-        const gaps = await aiProvider.analyzeQAGaps(profile, [result]);
+        const aiEngine = new AIEngine({ provider: 'mock' });
+        const analysis = await aiEngine.analyzeEvidence(profile, [result]);
         aiAnalysis = {
-          summary: gaps.summary,
-          rootCauseAnalyses: gaps.rootCauseAnalyses.map(r => ({
+          summary: analysis.summary,
+          rootCauseAnalyses: analysis.rootCauseAnalyses.map(r => ({
             resultId: r.resultId,
             possibleRootCause: r.possibleRootCause,
             confidence: r.confidence,
             suggestedFix: r.suggestedFix
           })),
-          coverageGaps: gaps.coverageGaps.map(cg => ({
+          coverageGaps: analysis.coverageGaps.map(cg => ({
             id: cg.id,
             area: cg.area,
             description: cg.description,
             severity: cg.severity,
             recommendedAction: cg.recommendedAction,
-            suggestedCheckCommand: cg.suggestedCapabilityId
+            suggestedCapabilityId: cg.suggestedCapabilityId
           })),
-          additionalCheckRecommendations: gaps.additionalCheckRecommendations,
+          additionalCheckRecommendations: (analysis.remediationRecommendations || []).map((rec, idx) => ({
+            id: `rec-${idx + 1}`,
+            name: rec.area,
+            reason: rec.action,
+            command: undefined
+          })),
           sanitizedTokensCount: 100,
           analyzedAt: new Date().toISOString()
         };

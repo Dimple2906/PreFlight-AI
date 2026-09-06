@@ -1,15 +1,18 @@
-import { ProjectProfile, ExecutionResult } from '@preflight/core';
 import {
-  ProjectAnalysisResult,
-  QAGapAnalysisResult,
-  DeploymentGapAnalysisResult,
-  FailureAnalysisResult
-} from '../schemas/ai-schemas.js';
+  ProjectContext,
+  ProjectAnalysis,
+  TestPlanningContext,
+  TestPlan,
+  EvidenceContext,
+  EvidenceAnalysis,
+  GapAnalysisContext,
+  TestRecommendation
+} from '../schemas/ai-response.js';
 
 export interface AIProvider {
   name: string;
-  analyzeProject(profile: ProjectProfile): Promise<ProjectAnalysisResult>;
-  analyzeQAGaps(profile: ProjectProfile, results: ExecutionResult[]): Promise<QAGapAnalysisResult>;
-  analyzeDeploymentGaps(profile: ProjectProfile, results: ExecutionResult[]): Promise<DeploymentGapAnalysisResult>;
-  analyzeFailure(failure: ExecutionResult): Promise<FailureAnalysisResult>;
+  analyzeProject(context: ProjectContext): Promise<ProjectAnalysis>;
+  generateTestPlan(context: TestPlanningContext): Promise<TestPlan>;
+  analyzeEvidence(context: EvidenceContext): Promise<EvidenceAnalysis>;
+  recommendAdditionalTests(context: GapAnalysisContext): Promise<TestRecommendation[]>;
 }
