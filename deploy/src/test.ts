@@ -4,10 +4,15 @@ import { execSync } from 'child_process';
 
 console.log('Running PreFlight AI Test Suite...');
 
-const testsDir = path.resolve(__dirname, '../tests');
+let testsDir = path.resolve(__dirname, '../tests');
 if (!fs.existsSync(testsDir)) {
-  console.log('No tests directory found at:', testsDir);
-  process.exit(0);
+  const localTestsDir = path.resolve(__dirname, '../Preflight Local test files');
+  if (fs.existsSync(localTestsDir)) {
+    testsDir = localTestsDir;
+  } else {
+    console.log('No tests directory found at:', testsDir);
+    process.exit(0);
+  }
 }
 
 const testFiles = fs.readdirSync(testsDir)
