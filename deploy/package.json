@@ -1,0 +1,28 @@
+{
+  "name": "preflight-cli",
+  "version": "0.1.0",
+  "description": "PreFlight AI deployment-safety CLI",
+  "main": "dist/index.js",
+  "types": "dist/types/index.d.ts",
+  "bin": {
+    "preflight": "dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "pnpm build && node ./dist/test.js",
+    "discover": "node -e \"const { classifyProject, formatDiscoveryReport } = require('./dist/discovery/classifier'); console.log(formatDiscoveryReport(classifyProject('.')));\""
+  },
+  "keywords": [
+    "preflight",
+    "deployment",
+    "safety",
+    "cli"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^26.4.1",
+    "typescript": "^7.0.2"
+  }
+}
