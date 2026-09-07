@@ -1,0 +1,27 @@
+{
+  "name": "preflight-test",
+  "version": "1.0.0",
+  "description": "PreFlight AI testing and adversarial QA engine",
+  "main": "dist/index.js",
+  "bin": {
+    "preflight-test": "dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "node tests/test_battery.js"
+  },
+  "keywords": [
+    "preflight",
+    "test",
+    "qa",
+    "adversarial",
+    "safety"
+  ],
+  "author": "PreFlight AI Team",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^22.13.5",
+    "typescript": "^5.7.3"
+  }
+}
