@@ -4,7 +4,7 @@ import * as path from 'node:path';
 import { ProjectInspector } from '@preflight/discovery';
 import { ProjectClassifier } from '@preflight/classifier';
 import { QAEngine, QARegistry } from '@preflight/qa-engine';
-import { AIEngine } from '@preflight/ai-engine';
+import { AIEngine, PayloadSanitizer } from '@preflight/ai-engine';
 import { SecretSanitizer } from '@preflight/security';
 import { loadPreflightConfig } from '@preflight/config';
 import {
@@ -24,7 +24,10 @@ export interface TestAppServiceOptions {
   configPath?: string;
   url?: string;
   concurrency?: number;
+  adaptive?: boolean;
   maxAdaptiveRounds?: number;
+  maxAdditionalChecks?: number;
+  maxRecommendationsPerRound?: number;
   onProgress?: (message: string) => void;
 }
 
@@ -68,13 +71,14 @@ export class PreflightTestService {
     const isAiActive = options.enableAi && config.ai.enabled;
     const hasGeminiKey = Boolean(process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY.trim().length > 0);
     const effectiveProvider: 'gemini' | 'mock' = isAiActive
-      ? (config.ai.provider === 'mock' && !hasGeminiKey ? 'mock' : (config.ai.provider === 'gemini' || hasGeminiKey ? 'gemini' : 'mock'))
+      ? (config.ai.provider === 'mock' ? 'mock' : 'gemini')
       : 'mock';
 
     const aiEngine = new AIEngine({
       provider: effectiveProvider,
       apiKey: process.env.GEMINI_API_KEY,
-      modelName: config.ai.modelName
+      modelName: config.ai.modelName,
+      sanitizer: new PayloadSanitizer(sanitizer)
     });
     const aiStatus = aiEngine.getStatus();
 
@@ -86,7 +90,7 @@ export class PreflightTestService {
       }
     };
 
-    if (isAiActive && aiStatus.provider === 'gemini') {
+    if (isAiActive && aiStatus.provider === 'gemini' && aiStatus.available) {
       logAi(`AI: Gemini enabled (model: ${aiStatus.model})`);
     }
 
@@ -96,79 +100,83 @@ export class PreflightTestService {
 
     // --- PHASE 1 & 2: AI RISK UNDERSTANDING & STRUCTURED TEST PLANNING ---
     if (isAiActive) {
-      try {
-        const riskAnalysis = await aiEngine.analyzeProjectRisk(profile);
-        logAi('AI: Project analysis completed');
-        aiRiskAnalysisRecord = {
-          summary: riskAnalysis.summary,
-          detectedArchitectureRisk: riskAnalysis.detectedArchitectureRisk,
-          riskSignals: riskAnalysis.riskSignals || [],
-          recommendedTestingStrategy: riskAnalysis.recommendedTestingStrategy || []
-        };
+      if (!aiStatus.available) {
+        logAi(`AI: ${aiStatus.provider === 'gemini' ? 'Gemini' : 'AI'} unavailable (GEMINI_API_KEY missing or invalid). Proceeding with deterministic testing.`);
+      } else {
+        try {
+          const riskAnalysis = await aiEngine.analyzeProjectRisk(profile);
+          logAi('AI: Project analysis completed');
+          aiRiskAnalysisRecord = {
+            summary: riskAnalysis.summary,
+            detectedArchitectureRisk: riskAnalysis.detectedArchitectureRisk,
+            riskSignals: riskAnalysis.riskSignals || [],
+            recommendedTestingStrategy: riskAnalysis.recommendedTestingStrategy || []
+          };
 
-        const capabilities = qaRegistry.getCapabilitiesList();
-        const testPlan = await aiEngine.generateTestPlan(profile, capabilities);
-        logAi(`AI: Test plan generated (${testPlan.recommendedTests.length} recommendations)`);
+          const capabilities = qaRegistry.getCapabilitiesList();
+          const testPlan = await aiEngine.generateTestPlan(profile, capabilities);
+          logAi(`AI: Test plan generated (${testPlan.recommendedTests.length} recommendations)`);
 
-        for (const rec of testPlan.recommendedTests) {
-          const validation = qaRegistry.validateRecommendation(rec.id, profile);
-          if (validation.valid && validation.test) {
-            planItems.push({
-              id: rec.id,
-              category: rec.category,
-              title: rec.title,
-              objective: rec.objective,
-              rationale: rec.rationale,
-              risk: rec.risk,
-              status: 'APPROVED'
-            });
-            approvedAiTestsToRun.push({ id: validation.test.id, name: validation.test.name });
-          } else {
-            planItems.push({
-              id: rec.id,
-              category: rec.category,
-              title: rec.title,
-              objective: rec.objective,
-              rationale: rec.rationale,
-              risk: rec.risk,
-              status: 'SKIPPED',
-              skipReason: validation.reason || 'No compatible deterministic executor available in registry.'
-            });
+          for (const rec of testPlan.recommendedTests) {
+            const validation = qaRegistry.validateRecommendation(rec.id, profile);
+            if (validation.valid && validation.test) {
+              planItems.push({
+                id: rec.id,
+                category: rec.category,
+                title: rec.title,
+                objective: rec.objective,
+                rationale: rec.rationale,
+                risk: rec.risk,
+                status: 'APPROVED'
+              });
+              approvedAiTestsToRun.push({ id: validation.test.id, name: validation.test.name });
+            } else {
+              planItems.push({
+                id: rec.id,
+                category: rec.category,
+                title: rec.title,
+                objective: rec.objective,
+                rationale: rec.rationale,
+                risk: rec.risk,
+                status: 'SKIPPED',
+                skipReason: validation.reason || 'No compatible deterministic executor available in registry.'
+              });
 
-            results.push({
-              id: `test-res-skip-${rec.id}-${Date.now()}`,
-              targetId: rec.id,
-              name: rec.title,
-              type: 'test',
-              status: 'SKIP',
-              severity: 'INFO',
-              durationMs: 0,
-              evidence: {
-                id: `ev-skip-${Date.now()}`,
-                command: 'N/A',
-                stdout: '',
-                stderr: `AI recommendation skipped: ${validation.reason || 'No compatible deterministic executor available in registry.'}`,
-                exitCode: 0,
+              results.push({
+                id: `test-res-skip-${rec.id}-${Date.now()}`,
+                targetId: rec.id,
+                name: rec.title,
+                type: 'test',
+                status: 'SKIP',
+                severity: 'INFO',
                 durationMs: 0,
-                artifacts: [],
-                capturedAt: new Date().toISOString()
-              },
-              explanation: `AI recommendation skipped: ${validation.reason || 'No compatible deterministic executor available in registry.'}`,
-              provenance: 'ai-selected',
-              findings: []
-            });
-            executedTestIds.add(rec.id);
+                evidence: {
+                  id: `ev-skip-${Date.now()}`,
+                  command: 'N/A',
+                  stdout: '',
+                  stderr: `AI recommendation skipped: ${validation.reason || 'No compatible deterministic executor available in registry.'}`,
+                  exitCode: 0,
+                  durationMs: 0,
+                  artifacts: [],
+                  capturedAt: new Date().toISOString()
+                },
+                explanation: `AI recommendation skipped: ${validation.reason || 'No compatible deterministic executor available in registry.'}`,
+                provenance: 'ai-selected',
+                findings: []
+              });
+              executedTestIds.add(rec.id);
+            }
           }
-        }
 
-        if (approvedAiTestsToRun.length > 0) {
-          logAi(`AI: Selected registered tests: ${approvedAiTestsToRun.map(t => t.id).join(', ')}`);
-        } else {
-          logAi('AI: Selected registered tests: none (all recommended capabilities already matched or unsupported)');
+          if (approvedAiTestsToRun.length > 0) {
+            logAi(`AI: Selected registered tests: ${approvedAiTestsToRun.map(t => t.id).join(', ')}`);
+          } else {
+            logAi('AI: Selected registered tests: none (all recommended capabilities already matched or unsupported)');
+          }
+        } catch (err: any) {
+          logAi(`AI: Provider error (${err.message || String(err)}). Falling back to deterministic testing.`);
+          aiStatus.available = false;
         }
-      } catch (err: any) {
-        logAi(`AI: Gemini unavailable (${err.message || String(err)}). Falling back to deterministic testing.`);
-        aiStatus.available = false;
       }
     }
 
@@ -314,90 +322,9 @@ export class PreflightTestService {
     // --- PHASE 4: ADAPTIVE TEST LOOP (AI EVIDENCE & GAP ANALYSIS) ---
     let aiAnalysis: AIAnalysis | undefined;
     if (isAiActive) {
-      const maxRounds = options.maxAdaptiveRounds !== undefined ? options.maxAdaptiveRounds : 2;
-      let round = 0;
-
-      while (round < maxRounds) {
-        round++;
-        logAi(`AI: Adaptive round ${round} initiated`);
-        try {
-          const capabilities = qaRegistry.getCapabilitiesList();
-          const recommendations = await aiEngine.recommendAdditionalTests(profile, results, capabilities);
-          let executedInRound = 0;
-
-          for (const rec of recommendations) {
-            const capId = rec.capabilityId || rec.id;
-            if (capId && !executedTestIds.has(capId)) {
-              const validation = qaRegistry.validateRecommendation(capId, profile);
-              if (validation.valid && validation.test && !executedTestIds.has(validation.test.id)) {
-                try {
-                  const extraResult = await validation.test.execute({
-                    projectRoot: profile.rootPath,
-                    profile,
-                    targetUrl: options.url,
-                    timeoutMs: 30000,
-                    maxConcurrency: options.concurrency || 4,
-                    environment: {},
-                    logger: ctx?.logLevel ? new Logger(ctx.logLevel) : new Logger('normal'),
-                    sanitizer
-                  });
-                  results.push({ ...extraResult, provenance: 'ai-selected' });
-                  executedTestIds.add(validation.test.id);
-                  executedInRound++;
-                } catch (err: any) {
-                  results.push(this.createErrorResult({ id: validation.test.id, name: validation.test.name }, err));
-                  executedTestIds.add(validation.test.id);
-                }
-              }
-            }
-          }
-
-          // If no newly approved tests were executed in this round, loop ends
-          if (executedInRound === 0) {
-            break;
-          }
-        } catch (err) {
-          break;
-        }
-      }
-
-      // Final Evidence Analysis & Remediation
-      try {
-        const evidenceAnalysis = await aiEngine.analyzeEvidence(profile, results);
-        logAi('AI: Evidence analysis completed');
+      if (!aiStatus.available) {
         aiAnalysis = {
-          summary: evidenceAnalysis.summary,
-          provider: aiStatus.provider === 'gemini' ? 'gemini' : 'mock',
-          status: aiStatus.available ? 'available' : 'unavailable',
-          riskAnalysis: aiRiskAnalysisRecord,
-          testPlan: planItems,
-          rootCauseAnalyses: evidenceAnalysis.rootCauseAnalyses.map((rca) => ({
-            resultId: rca.resultId,
-            possibleRootCause: rca.possibleRootCause,
-            confidence: rca.confidence,
-            suggestedFix: rca.suggestedFix
-          })),
-          coverageGaps: evidenceAnalysis.coverageGaps.map((cg) => ({
-            id: cg.id,
-            area: cg.area,
-            description: cg.description,
-            severity: cg.severity,
-            recommendedAction: cg.recommendedAction,
-            suggestedCapabilityId: cg.suggestedCapabilityId
-          })),
-          additionalCheckRecommendations: (evidenceAnalysis.remediationRecommendations || []).map((rec, idx) => ({
-            id: `rec-${idx + 1}`,
-            name: rec.area,
-            reason: rec.action,
-            command: undefined
-          })),
-          sanitizedTokensCount: 200,
-          analyzedAt: new Date().toISOString()
-        };
-      } catch (err: any) {
-        logAi(`AI: Evidence analysis failed (${err.message || String(err)}). Reporting AI unavailable.`);
-        aiAnalysis = {
-          summary: 'AI analysis unavailable due to API error.',
+          summary: 'AI analysis unavailable (GEMINI_API_KEY missing, invalid, or API unreachable).',
           provider: aiStatus.provider === 'gemini' ? 'gemini' : 'mock',
           status: 'unavailable',
           riskAnalysis: undefined,
@@ -408,6 +335,117 @@ export class PreflightTestService {
           sanitizedTokensCount: 0,
           analyzedAt: new Date().toISOString()
         };
+      } else {
+        const isAdaptiveEnabled = options.adaptive !== false;
+        const maxRounds = isAdaptiveEnabled ? (options.maxAdaptiveRounds !== undefined ? options.maxAdaptiveRounds : 2) : 0;
+        const maxAdditionalChecks = options.maxAdditionalChecks ?? 10;
+        const maxRecommendationsPerRound = options.maxRecommendationsPerRound ?? 5;
+        let round = 0;
+        let totalAdditionalExecuted = 0;
+
+        while (round < maxRounds && totalAdditionalExecuted < maxAdditionalChecks) {
+          round++;
+          logAi(`AI: Adaptive round ${round} initiated`);
+          try {
+            const capabilities = qaRegistry.getCapabilitiesList();
+            const recommendations = await aiEngine.recommendAdditionalTests(profile, results, capabilities);
+            let executedInRound = 0;
+
+            const roundRecs = (recommendations || []).slice(0, maxRecommendationsPerRound);
+
+            for (const rec of roundRecs) {
+              if (totalAdditionalExecuted >= maxAdditionalChecks) break;
+              const capId = rec.capabilityId || rec.id;
+
+              // Reject unknown, duplicate, command-containing, path-containing, or unsafe recommendations
+              if (!capId || typeof capId !== 'string') continue;
+              if (capId.includes('/') || capId.includes('\\') || capId.includes(';') || capId.includes('&') || capId.includes('|') || capId.includes('`') || capId.includes('$') || capId.includes(' ')) continue;
+              if (executedTestIds.has(capId) || executedTestIds.has(capId.toLowerCase())) continue;
+
+              const validation = qaRegistry.validateRecommendation(capId, profile);
+              if (!validation.valid || !validation.test) continue;
+              if (executedTestIds.has(validation.test.id)) continue;
+
+              try {
+                const extraResult = await validation.test.execute({
+                  projectRoot: profile.rootPath,
+                  profile,
+                  targetUrl: options.url,
+                  timeoutMs: 30000,
+                  maxConcurrency: options.concurrency || 4,
+                  environment: {},
+                  logger: ctx?.logLevel ? new Logger(ctx.logLevel) : new Logger('normal'),
+                  sanitizer
+                });
+                results.push({ ...extraResult, provenance: 'ai-selected' });
+                executedTestIds.add(validation.test.id);
+                executedInRound++;
+                totalAdditionalExecuted++;
+              } catch (err: any) {
+                results.push(this.createErrorResult({ id: validation.test.id, name: validation.test.name }, err));
+                executedTestIds.add(validation.test.id);
+                executedInRound++;
+                totalAdditionalExecuted++;
+              }
+            }
+
+            // If no newly approved tests were executed in this round, loop ends
+            if (executedInRound === 0) {
+              break;
+            }
+          } catch (err) {
+            break;
+          }
+        }
+
+        // Final Evidence Analysis & Remediation
+        try {
+          const evidenceAnalysis = await aiEngine.analyzeEvidence(profile, results);
+          logAi('AI: Evidence analysis completed');
+          aiAnalysis = {
+            summary: evidenceAnalysis.summary,
+            provider: aiStatus.provider === 'gemini' ? 'gemini' : 'mock',
+            status: 'available',
+            riskAnalysis: aiRiskAnalysisRecord,
+            testPlan: planItems,
+            rootCauseAnalyses: evidenceAnalysis.rootCauseAnalyses.map((rca) => ({
+              resultId: rca.resultId,
+              possibleRootCause: rca.possibleRootCause,
+              confidence: rca.confidence,
+              suggestedFix: rca.suggestedFix
+            })),
+            coverageGaps: evidenceAnalysis.coverageGaps.map((cg) => ({
+              id: cg.id,
+              area: cg.area,
+              description: cg.description,
+              severity: cg.severity,
+              recommendedAction: cg.recommendedAction,
+              suggestedCapabilityId: cg.suggestedCapabilityId
+            })),
+            additionalCheckRecommendations: (evidenceAnalysis.remediationRecommendations || []).map((rec, idx) => ({
+              id: `rec-${idx + 1}`,
+              name: rec.area,
+              reason: rec.action,
+              command: undefined
+            })),
+            sanitizedTokensCount: 200,
+            analyzedAt: new Date().toISOString()
+          };
+        } catch (err: any) {
+          logAi(`AI: Evidence analysis failed (${err.message || String(err)}). Reporting AI unavailable.`);
+          aiAnalysis = {
+            summary: 'AI analysis unavailable due to API error.',
+            provider: aiStatus.provider === 'gemini' ? 'gemini' : 'mock',
+            status: 'unavailable',
+            riskAnalysis: undefined,
+            testPlan: [],
+            rootCauseAnalyses: [],
+            coverageGaps: [],
+            additionalCheckRecommendations: [],
+            sanitizedTokensCount: 0,
+            analyzedAt: new Date().toISOString()
+          };
+        }
       }
     }
 

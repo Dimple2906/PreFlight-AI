@@ -29,6 +29,8 @@ export function createCliProgram(): Command {
     .option('--verbose', 'Enable detailed debug logging', false)
     .option('--quiet', 'Suppress all output except final result', false)
     .option('--no-ai', 'Disable AI analysis layer post-execution')
+    .option('--adaptive', 'Enable adaptive re-execution loop based on AI recommendations', true)
+    .option('--no-adaptive', 'Disable adaptive re-execution loop')
     .option('--config <path>', 'Path to custom configuration file')
     .option('-r, --report <path>', 'Write execution report to specified Markdown file');
 

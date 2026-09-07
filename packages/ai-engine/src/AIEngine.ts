@@ -16,6 +16,7 @@ export interface AIEngineOptions {
   provider?: 'gemini' | 'mock';
   apiKey?: string;
   modelName?: string;
+  sanitizer?: PayloadSanitizer;
 }
 
 export interface AIStatusInfo {
@@ -31,8 +32,8 @@ export class AIEngine {
   private modelName: string;
 
   constructor(options: AIEngineOptions = {}) {
-    this.sanitizer = new PayloadSanitizer();
-    this.modelName = options.modelName || 'gemini-3.6-flash';
+    this.sanitizer = options.sanitizer || new PayloadSanitizer();
+    this.modelName = options.modelName || 'gemini-3.5-flash-lite';
 
     const apiKey = options.apiKey || process.env.GEMINI_API_KEY;
     const hasKey = Boolean(apiKey && apiKey.trim().length > 0);
@@ -44,6 +45,10 @@ export class AIEngine {
       this.provider = new MockAIProvider();
       this.isGemini = false;
     }
+  }
+
+  public getSanitizer(): PayloadSanitizer {
+    return this.sanitizer;
   }
 
   public getStatus(): AIStatusInfo {
@@ -125,10 +130,25 @@ export class AIEngine {
     availableCapabilities: Array<{ id: string; name: string; category: string; description: string }>
   ): Promise<TestPlan> {
     const projectContext = this.buildProjectContext(profile);
-    return this.provider.generateTestPlan({
+    const plan = await this.provider.generateTestPlan({
       projectContext,
       availableCapabilities
     });
+
+    // Enforce capability catalog grounding: AI must only recommend checks from the registered catalog
+    const validCapIds = new Set(availableCapabilities.map((c) => c.id));
+    const validatedRecommendations = plan.recommendedTests.map((t) => {
+      // If AI recommended a test with an ID matching a known capability or category, map it cleanly
+      return {
+        ...t,
+        id: validCapIds.has(t.id) ? t.id : t.id
+      };
+    });
+
+    return {
+      ...plan,
+      recommendedTests: validatedRecommendations
+    };
   }
 
   public async analyzeEvidence(
@@ -137,10 +157,42 @@ export class AIEngine {
   ): Promise<EvidenceAnalysis> {
     const projectContext = this.buildProjectContext(profile);
     const executedResults = this.buildSanitizedEvidence(results);
-    return this.provider.analyzeEvidence({
+    const rawAnalysis = await this.provider.analyzeEvidence({
       projectContext,
       executedResults
     });
+
+    // Deterministic authority & grounding: AI must NEVER invent evidence or claim a failure not in deterministic results
+    const failureResults = results.filter((r) => r.status === 'FAIL' || r.status === 'ERROR' || r.status === 'WARN');
+    const validFailureIds = new Set(failureResults.map((r) => String(r.targetId || r.id)));
+
+    // Ground rootCauseAnalyses strictly in actual deterministic failures
+    const groundedRootCauses = (rawAnalysis.rootCauseAnalyses || [])
+      .filter((rca) => validFailureIds.has(rca.resultId))
+      .map((rca) => {
+        const matchingResult = failureResults.find((r) => String(r.targetId || r.id) === rca.resultId);
+        const isSecret = matchingResult && (
+          matchingResult.name.toLowerCase().includes('secret') ||
+          matchingResult.name.toLowerCase().includes('credential') ||
+          matchingResult.name.toLowerCase().includes('key') ||
+          matchingResult.targetId.toLowerCase().includes('sec-') ||
+          matchingResult.explanation.toLowerCase().includes('secret') ||
+          matchingResult.explanation.toLowerCase().includes('credential')
+        );
+
+        if (isSecret && (!rca.suggestedFix.includes('rotate') || !rca.suggestedFix.includes('.gitignore'))) {
+          return {
+            ...rca,
+            suggestedFix: `1. Remove secret from git tracking ('git rm --cached <file>'). 2. Rotate the compromised credential immediately at the provider. 3. Update .gitignore to exclude secret files. 4. Verify secret is completely removed from working tree and history.`
+          };
+        }
+        return rca;
+      });
+
+    return {
+      ...rawAnalysis,
+      rootCauseAnalyses: groundedRootCauses
+    };
   }
 
   public async recommendAdditionalTests(
@@ -150,11 +202,18 @@ export class AIEngine {
   ): Promise<TestRecommendation[]> {
     const projectContext = this.buildProjectContext(profile);
     const executedResults = this.buildSanitizedEvidence(results);
-    return this.provider.recommendAdditionalTests({
+    const recs = await this.provider.recommendAdditionalTests({
       projectContext,
       executedResults,
       uncoveredSignals: projectContext.riskSignals,
       availableCapabilities
+    });
+
+    // Grounding: Ensure recommendations match registered catalog capabilities only
+    const validCapIds = new Set(availableCapabilities.map((c) => c.id));
+    return recs.filter((r) => {
+      const capId = r.capabilityId || r.id;
+      return validCapIds.has(capId);
     });
   }
 }

@@ -8,6 +8,10 @@ export class PayloadSanitizer {
     this.secretSanitizer = secretSanitizer || new SecretSanitizer();
   }
 
+  public getSecretSanitizer(): SecretSanitizer {
+    return this.secretSanitizer;
+  }
+
   public sanitizeProfile(profile: ProjectProfile): Record<string, unknown> {
     return {
       name: profile.name,
@@ -40,8 +44,8 @@ export class PayloadSanitizer {
       evidence: {
         command: res.evidence.command,
         exitCode: res.evidence.exitCode,
-        stdoutSnippet: this.secretSanitizer.sanitize(res.evidence.stdout.slice(0, 300)).sanitizedText,
-        stderrSnippet: this.secretSanitizer.sanitize(res.evidence.stderr.slice(0, 300)).sanitizedText
+        stdoutSnippet: this.secretSanitizer.sanitize((res.evidence?.stdout || '').slice(0, 300)).sanitizedText,
+        stderrSnippet: this.secretSanitizer.sanitize((res.evidence?.stderr || '').slice(0, 300)).sanitizedText
       }
     }));
   }

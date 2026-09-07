@@ -8,7 +8,7 @@ export function renderBanner(): string {
   return lines.join('\n');
 }
 
-export function renderAIStatus(aiEnabled: boolean, provider = 'gemini', isAvailable = false, modelName = 'gemini-3.6-flash'): string {
+export function renderAIStatus(aiEnabled: boolean, provider = 'gemini', isAvailable = false, modelName = 'gemini-3.5-flash-lite', adaptive = true): string {
   const lines: string[] = [];
   lines.push(chalk.bold.white('AI PROVIDER'));
   if (!aiEnabled) {
@@ -16,11 +16,11 @@ export function renderAIStatus(aiEnabled: boolean, provider = 'gemini', isAvaila
   } else {
     const hasKey = Boolean(process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY.trim().length > 0);
     lines.push(`  ${chalk.dim('GEMINI_API_KEY detected:')} ${hasKey ? chalk.green('yes') : chalk.yellow('no')}`);
-    lines.push(`  ${chalk.dim('Selected provider:')}       ${chalk.cyan(provider === 'gemini' && hasKey ? 'Gemini' : 'Mock')}`);
+    lines.push(`  ${chalk.dim('Selected provider:')}       ${chalk.cyan(provider === 'gemini' ? (hasKey ? 'Gemini' : 'Gemini (unavailable)') : 'Mock')}`);
 
     if (provider === 'gemini' && (isAvailable || hasKey)) {
       lines.push(`  ${chalk.green('✓ Gemini connected')}`);
-      lines.push(`  ${chalk.dim(`Model: ${modelName} | Mode: adaptive testing`)}`);
+      lines.push(`  ${chalk.dim(`Model: ${modelName} | Mode: ${adaptive ? 'adaptive testing' : 'deterministic testing (adaptive bypassed)'}`)}`);
     } else if (provider === 'gemini') {
       lines.push(`  ${chalk.yellow('⚠ Gemini unavailable (GEMINI_API_KEY missing or invalid)')}`);
       lines.push(`  ${chalk.dim('Mode: offline deterministic testing')}`);

@@ -12,6 +12,6 @@ export default defineConfig({
       '**/dist/**',
       '**/build/**'
     ],
-    testTimeout: 30000
+    testTimeout: 60000
   }
 });

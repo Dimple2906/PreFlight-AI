@@ -21,9 +21,12 @@ export function registerTestCommand(program: Command): void {
     .description('Perform deterministic adversarial QA testing and coverage gap analysis')
     .option('--url <url>', 'Target application HTTP URL for active probing')
     .option('--concurrency <number>', 'Maximum concurrency for burst probes', '4')
+    .option('--adaptive', 'Enable adaptive re-execution loop based on AI recommendations', true)
+    .option('--no-adaptive', 'Disable adaptive re-execution loop')
     .action(async (projectArg?: string, cmdOpts?: TestCommandOptions) => {
       const globalOpts = program.opts<GlobalCliOptions>();
       const opts = { ...globalOpts, ...cmdOpts };
+      const isAdaptive = !process.argv.includes('--no-adaptive') && opts.adaptive !== false;
       const targetPath = projectArg ? path.resolve(projectArg) : process.cwd();
 
       // Load environment variables before provider resolution
@@ -36,7 +39,7 @@ export function registerTestCommand(program: Command): void {
 
       if (!opts.quiet && !opts.json) {
         console.log(renderBanner());
-        console.log(renderAIStatus(isAiEnabled, activeProvider, hasGeminiKey, config.ai.modelName));
+        console.log(renderAIStatus(isAiEnabled, activeProvider, hasGeminiKey, config.ai.modelName, isAdaptive));
       }
 
       const spinner = !opts.quiet && !opts.json ? ora('Inspecting project structure & executing tests...').start() : null;
@@ -46,6 +49,7 @@ export function registerTestCommand(program: Command): void {
         const report = await testService.run({
           projectPath: targetPath,
           enableAi: isAiEnabled,
+          adaptive: isAdaptive,
           configPath: opts.config,
           url: opts.url,
           concurrency: opts.concurrency ? parseInt(opts.concurrency, 10) : 4,

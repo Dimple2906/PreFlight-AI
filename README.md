@@ -151,13 +151,12 @@ apps/
 
 > **CRITICAL GUARANTEE**: AI is **NEVER** the authority for PASS/FAIL decisions.
 
-- **Deterministic Execution is Authority**: Actual test runners, exit codes, and HTTP probe responses dictate PASS/FAIL.
-- **AI as Adaptive Reasoning Advisor**: The Gemini reasoning layer analyzes execution evidence post-execution to:
-  1. Identify root causes of failures.
-  2. Recommend missing coverage gaps.
-  3. Suggest remediation code fixes.
-  4. Recommend additional registry test capabilities for deterministic re-execution.
-- **Offline Fallback**: If `--no-ai` is passed, or if `GEMINI_API_KEY` is missing, PreFlight falls back seamlessly to offline reasoning without failing CLI runs.
+- **Deterministic Execution is Authority**: Actual test runners, exit codes, and HTTP probe responses dictate PASS/FAIL/READY/BLOCKED verdicts.
+- **No Override Authority**: Gemini can **never override** a deterministic CRITICAL or HIGH failure, and **never declares** deployment or test readiness independently.
+- **Command Execution Safety**: PreFlight **never executes arbitrary AI-generated shell commands**. AI-generated text cannot become a command. All executable test commands must go through the deterministic, controlled execution layer with `shell: false`, timeout, and sandbox protections.
+- **Grounded Remediation**: All AI explanations and remediation recommendations are strictly grounded in deterministic check evidence. For secret exposure findings, remediation explicitly guides: (1) removing the secret from git tracking, (2) rotating the credential immediately at the provider, (3) updating `.gitignore`, and (4) verifying secret elimination.
+- **Catalog Grounding**: Gemini only recommends capabilities that exist in PreFlight's registered check catalog.
+- **Offline & Unavailable Fallback**: If `--no-ai` is passed, or if `GEMINI_API_KEY` is missing/invalid/unavailable, PreFlight continues deterministic checks seamlessly, reports AI status as unavailable without generating fake reasoning, and preserves deterministic verdict authority.
 
 ---
 

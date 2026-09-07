@@ -1,3 +1,5 @@
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 import { describe, it, expect, afterEach } from 'vitest';
 import { PreflightTestService } from '../services/test.service.js';
 import { PreflightDeployService } from '../services/deploy.service.js';
@@ -20,6 +22,10 @@ describe('PreFlight End-to-End System Integration (Dynamic Temporary Projects)',
 
   it('runs complete PreFlight QA Flow with result merging & provenance on dynamic project', async () => {
     tempProj = createTempNodeProject();
+    fs.writeFileSync(
+      path.join(tempProj.rootPath, '.preflightrc.json'),
+      JSON.stringify({ ai: { enabled: true, provider: 'mock' } })
+    );
     const testService = new PreflightTestService();
     const report = await testService.run({
       projectPath: tempProj.rootPath,

@@ -20,17 +20,25 @@ import { buildEvidenceAnalysisPrompt } from '../../prompts/evidence-analysis.js'
 import { buildGapAnalysisPrompt } from '../../prompts/gap-analysis.js';
 import { z } from 'zod';
 
+function sanitizeErrorMessage(msg: string, key?: string): string {
+  let cleaned = msg || '';
+  if (key && key.trim().length > 0) {
+    cleaned = cleaned.replaceAll(key, '[REDACTED]');
+  }
+  cleaned = cleaned.replace(/AIza[0-9A-Za-z\-_]{35}/g, '[REDACTED]');
+  cleaned = cleaned.replace(/AQ\.[0-9A-Za-z\-_]{20,}/g, '[REDACTED]');
+  return cleaned;
+}
+
 export class GeminiProvider implements AIProvider {
   public readonly name = 'gemini';
   private apiKey: string;
   private modelName: string;
-  private mockFallback: MockAIProvider;
   public lastError: string | null = null;
 
-  constructor(apiKey?: string, modelName = 'gemini-3.6-flash') {
+  constructor(apiKey?: string, modelName = 'gemini-3.5-flash-lite') {
     this.apiKey = apiKey !== undefined ? apiKey : (process.env.GEMINI_API_KEY || '');
     this.modelName = modelName;
-    this.mockFallback = new MockAIProvider();
   }
 
   public isAvailable(): boolean {
@@ -39,7 +47,7 @@ export class GeminiProvider implements AIProvider {
 
   public async analyzeProject(context: ProjectContext): Promise<ProjectAnalysis> {
     if (!this.isAvailable()) {
-      return this.mockFallback.analyzeProject(context);
+      throw new Error(`Gemini provider unavailable: ${this.lastError || 'GEMINI_API_KEY missing or invalid'}`);
     }
 
     const prompt = buildRiskAnalysisPrompt(context);
@@ -49,14 +57,15 @@ export class GeminiProvider implements AIProvider {
       this.lastError = null;
       return ProjectAnalysisSchema.parse(json);
     } catch (err: any) {
-      this.lastError = err.message || String(err);
-      throw err;
+      const sanitized = sanitizeErrorMessage(err.message || String(err), this.apiKey);
+      this.lastError = sanitized;
+      throw new Error(sanitized);
     }
   }
 
   public async generateTestPlan(context: TestPlanningContext): Promise<TestPlan> {
     if (!this.isAvailable()) {
-      return this.mockFallback.generateTestPlan(context);
+      throw new Error(`Gemini provider unavailable: ${this.lastError || 'GEMINI_API_KEY missing or invalid'}`);
     }
 
     const prompt = buildTestPlannerPrompt(context);
@@ -66,14 +75,15 @@ export class GeminiProvider implements AIProvider {
       this.lastError = null;
       return TestPlanSchema.parse(json);
     } catch (err: any) {
-      this.lastError = err.message || String(err);
-      throw err;
+      const sanitized = sanitizeErrorMessage(err.message || String(err), this.apiKey);
+      this.lastError = sanitized;
+      throw new Error(sanitized);
     }
   }
 
   public async analyzeEvidence(context: EvidenceContext): Promise<EvidenceAnalysis> {
     if (!this.isAvailable()) {
-      return this.mockFallback.analyzeEvidence(context);
+      throw new Error(`Gemini provider unavailable: ${this.lastError || 'GEMINI_API_KEY missing or invalid'}`);
     }
 
     const prompt = buildEvidenceAnalysisPrompt(context);
@@ -83,14 +93,15 @@ export class GeminiProvider implements AIProvider {
       this.lastError = null;
       return EvidenceAnalysisSchema.parse(json);
     } catch (err: any) {
-      this.lastError = err.message || String(err);
-      throw err;
+      const sanitized = sanitizeErrorMessage(err.message || String(err), this.apiKey);
+      this.lastError = sanitized;
+      throw new Error(sanitized);
     }
   }
 
   public async recommendAdditionalTests(context: GapAnalysisContext): Promise<TestRecommendation[]> {
     if (!this.isAvailable()) {
-      return this.mockFallback.recommendAdditionalTests(context);
+      throw new Error(`Gemini provider unavailable: ${this.lastError || 'GEMINI_API_KEY missing or invalid'}`);
     }
 
     const prompt = buildGapAnalysisPrompt(context);
@@ -101,20 +112,24 @@ export class GeminiProvider implements AIProvider {
       this.lastError = null;
       return schema.parse(json);
     } catch (err: any) {
-      this.lastError = err.message || String(err);
-      throw err;
+      const sanitized = sanitizeErrorMessage(err.message || String(err), this.apiKey);
+      this.lastError = sanitized;
+      throw new Error(sanitized);
     }
   }
 
   private async callGeminiApi(promptText: string): Promise<string> {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${this.modelName}:generateContent?key=${this.apiKey}`;
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${this.modelName}:generateContent`;
     let lastErr: any = null;
 
     for (let attempt = 1; attempt <= 3; attempt++) {
       try {
         const res = await fetch(url, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            'x-goog-api-key': this.apiKey
+          },
           body: JSON.stringify({
             contents: [{ parts: [{ text: promptText }] }],
             generationConfig: { responseMimeType: 'application/json' }
@@ -132,11 +147,13 @@ export class GeminiProvider implements AIProvider {
           }
 
           if ((res.status === 503 || res.status === 429) && attempt < 3) {
-            await new Promise((r) => setTimeout(r, 1500 * attempt));
+            const retryMatch = parsedMessage.match(/retry in ([0-9.]+)s/i);
+            const waitMs = retryMatch ? Math.min(Math.ceil(parseFloat(retryMatch[1]) * 1000) + 1000, 35000) : 1500 * attempt;
+            await new Promise((r) => setTimeout(r, waitMs));
             continue;
           }
 
-          throw new Error(`Gemini API Error ${res.status}: ${parsedMessage}`);
+          throw new Error(`Gemini API Error ${res.status}: ${sanitizeErrorMessage(parsedMessage, this.apiKey)}`);
         }
 
         const data: any = await res.json();
@@ -148,12 +165,14 @@ export class GeminiProvider implements AIProvider {
         }
         return text.trim();
       } catch (err: any) {
-        lastErr = err;
+        lastErr = new Error(sanitizeErrorMessage(err.message || String(err), this.apiKey));
         if (attempt < 3 && (err.message?.includes('503') || err.message?.includes('429'))) {
-          await new Promise((r) => setTimeout(r, 1500 * attempt));
+          const retryMatch = err.message.match(/retry in ([0-9.]+)s/i);
+          const waitMs = retryMatch ? Math.min(Math.ceil(parseFloat(retryMatch[1]) * 1000) + 1000, 35000) : 1500 * attempt;
+          await new Promise((r) => setTimeout(r, waitMs));
           continue;
         }
-        throw err;
+        throw lastErr;
       }
     }
     throw lastErr;

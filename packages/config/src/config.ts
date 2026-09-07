@@ -15,7 +15,7 @@ export const PreflightConfigSchema = z.object({
   ai: z.object({
     enabled: z.boolean().default(true),
     provider: z.enum(['mock', 'gemini']).default('mock'),
-    modelName: z.string().default('gemini-3.6-flash'),
+    modelName: z.string().default('gemini-3.5-flash-lite'),
     apiKeyEnvVar: z.string().default('GEMINI_API_KEY')
   }).default({}),
   execution: z.object({

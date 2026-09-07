@@ -62,15 +62,12 @@ describe('AI Reasoning Layer & Provider Architecture', () => {
     expect(stdoutSnippet).toContain('[REDACTED');
   });
 
-  it('should fall back to MockAIProvider cleanly when GEMINI_API_KEY is missing', async () => {
+  it('should report unavailable and reject when GEMINI_API_KEY is missing (preventing fake reasoning)', async () => {
     const provider = new GeminiProvider(''); // empty API key
     expect(provider.isAvailable()).toBe(false);
 
     const context = new AIEngine().buildProjectContext(sampleProfile);
-    const analysis = await provider.analyzeProject(context);
-
-    expect(analysis.summary).toContain('api-server');
-    expect(analysis.riskSignals.length).toBeGreaterThan(0);
+    await expect(provider.analyzeProject(context)).rejects.toThrow('Gemini provider unavailable');
   });
 
   it('should generate structured test plan via MockAIProvider deterministically', async () => {

@@ -26,8 +26,8 @@ export class SecretSanitizer {
     /-----BEGIN (?:RSA |EC |PGP |OPENSSH )?PRIVATE KEY-----[\s\S]*?-----END (?:RSA |EC |PGP |OPENSSH )?PRIVATE KEY-----/g,
     // Database Connection Strings with Passwords
     /(mongodb(?:\+srv)?|postgres(?:ql)?|mysql|redis):\/\/([^:]+):([^@]+)@/gi,
-    // Key/Password assignments in strings or configs
-    /(?:api[_-]?key|password|pass|secret|auth[_-]?token|private[_-]?key)\s*[:=]\s*["']?([^"'\s;\n]{6,})["']?/gi
+    // Key/Password/Token/Credential assignments in strings, configs, or .env files
+    /(?:[a-z0-9_-]*(?:api[_-]?key|password|pass|secret|token|auth[_-]?token|cred|credential|private[_-]?key)[a-z0-9_-]*)\s*[:=]\s*["']?([^"'\s;\n]{4,})["']?/gi
   ];
 
   /**

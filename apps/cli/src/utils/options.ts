@@ -5,6 +5,7 @@ export interface GlobalCliOptions {
   verbose: boolean;
   quiet: boolean;
   ai: boolean;
+  adaptive?: boolean;
   config?: string;
   report?: string;
 }

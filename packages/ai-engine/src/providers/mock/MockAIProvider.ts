@@ -107,14 +107,32 @@ export class MockAIProvider implements AIProvider {
 
   public async analyzeEvidence(context: EvidenceContext): Promise<EvidenceAnalysis> {
     const failures = context.executedResults.filter((r) => r.status === 'FAIL' || r.status === 'ERROR' || r.status === 'WARN');
-    const rootCauseAnalyses = failures.map((f) => ({
-      resultId: f.testId,
-      possibleRootCause: `Adversarial probe revealed non-compliant behavior in ${f.name}: ${f.explanation}`,
-      risk: `High susceptibility to ${f.severity.toLowerCase()} severity exploitation`,
-      impact: 'Potential data leak, denial of service, or unauthorized state mutation in production',
-      confidence: 'HIGH' as const,
-      suggestedFix: `Apply boundary validation, proper error sanitization, or authentication middleware at the route level.`
-    }));
+    const rootCauseAnalyses = failures.map((f) => {
+      const isSecretFinding = f.name.toLowerCase().includes('secret') ||
+        f.name.toLowerCase().includes('credential') ||
+        f.name.toLowerCase().includes('key') ||
+        f.testId.toLowerCase().includes('sec-') ||
+        f.explanation.toLowerCase().includes('secret') ||
+        f.explanation.toLowerCase().includes('credential');
+
+      let suggestedFix = `Review and harden endpoint implementation corresponding to ${f.name}: ${f.explanation}`;
+      if (isSecretFinding) {
+        suggestedFix = `1. Remove secret from git tracking ('git rm --cached <file>'). 2. Rotate the compromised credential immediately at the provider. 3. Update .gitignore to exclude secret files. 4. Verify secret is completely removed from working tree and repository.`;
+      }
+
+      return {
+        resultId: f.testId,
+        possibleRootCause: `Deterministic check revealed failure in ${f.name}: ${f.explanation}`,
+        risk: isSecretFinding
+          ? 'Critical credential exposure vulnerability'
+          : `High susceptibility to ${f.severity.toLowerCase()} severity exploitation`,
+        impact: isSecretFinding
+          ? 'Compromised credentials can lead to complete service impersonation, data exfiltration, or unauthorized API operations'
+          : 'Potential data leak, denial of service, or unauthorized state mutation in production',
+        confidence: 'HIGH' as const,
+        suggestedFix
+      };
+    });
 
     const coverageGaps = [];
     const hasConcurrency = context.executedResults.some((r) => r.testId.includes('conc') && r.status === 'PASS');
@@ -147,11 +165,22 @@ export class MockAIProvider implements AIProvider {
         : 'All executed tests passed deterministically. Found coverage gaps to consider.',
       rootCauseAnalyses,
       coverageGaps,
-      remediationRecommendations: failures.map((f) => ({
-        area: f.name,
-        action: `Review and harden endpoint implementation corresponding to ${f.name}.`,
-        priority: 'high' as const
-      }))
+      remediationRecommendations: failures.map((f) => {
+        const isSecretFinding = f.name.toLowerCase().includes('secret') ||
+          f.name.toLowerCase().includes('credential') ||
+          f.name.toLowerCase().includes('key') ||
+          f.testId.toLowerCase().includes('sec-') ||
+          f.explanation.toLowerCase().includes('secret') ||
+          f.explanation.toLowerCase().includes('credential');
+
+        return {
+          area: f.name,
+          action: isSecretFinding
+            ? 'Remove secret from tracking, rotate credential immediately, update .gitignore, and verify secret is gone.'
+            : `Review and remediate deterministic failure in ${f.name}: ${f.explanation}`,
+          priority: (f.severity === 'CRITICAL' ? 'critical' : f.severity === 'HIGH' ? 'high' : 'medium') as 'critical' | 'high' | 'medium'
+        };
+      })
     };
   }
 

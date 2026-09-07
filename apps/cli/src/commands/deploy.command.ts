@@ -13,8 +13,12 @@ export function registerDeployCommand(program: Command): void {
   program
     .command('deploy [path]')
     .description('Perform deterministic deployment-readiness checks and pre-flight release validation')
-    .action(async (projectArg?: string) => {
-      const opts = program.opts<GlobalCliOptions>();
+    .option('--adaptive', 'Enable adaptive re-execution loop based on AI recommendations', true)
+    .option('--no-adaptive', 'Disable adaptive re-execution loop')
+    .action(async (projectArg?: string, cmdOpts?: any) => {
+      const globalOpts = program.opts<GlobalCliOptions>();
+      const opts = { ...globalOpts, ...cmdOpts };
+      const isAdaptive = !process.argv.includes('--no-adaptive') && opts.adaptive !== false;
       const targetPath = projectArg ? path.resolve(projectArg) : process.cwd();
       loadCliEnvironment(targetPath);
       const spinner = !opts.quiet && !opts.json ? ora('Inspecting deployment readiness...').start() : null;
@@ -24,6 +28,7 @@ export function registerDeployCommand(program: Command): void {
         const report = await deployService.run({
           projectPath: targetPath,
           enableAi: opts.ai !== false,
+          adaptive: isAdaptive,
           configPath: opts.config
         });
 
